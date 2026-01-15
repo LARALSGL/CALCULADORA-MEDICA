@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mega Calculadora Médica (offline)</title>
+  <style>
+    :root{--bg:#0b0f14;--card:#121a24;--line:#223043;--field:#0e1520;--txt:#e8eef6;--mut:rgba(232,238,246,.78);}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:0; background:var(--bg); color:var(--txt);}
+    .wrap{max-width:1080px; margin:0 auto; padding:22px;}
+    h1{font-size:20px; margin:0 0 10px;}
+    .muted{color:var(--mut); font-size:12px; line-height:1.35;}
+    .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin:14px 0;}
+    .tabs{display:flex; gap:8px; flex-wrap:wrap;}
+    .tab{border-radius:999px; padding:8px 10px; border:1px solid #2b3c54; background:var(--field); color:var(--txt); cursor:pointer;}
+    .tab.active{background:#1a2636;}
+    .row{display:grid; grid-template-columns:repeat(12,1fr); gap:12px;}
+    .col12{grid-column:span 12;}
+    .col6{grid-column:span 6;}
+    .col4{grid-column:span 4;}
+    .col3{grid-column:span 3;}
+    label{display:block; font-size:12px; color:var(--mut); margin:4px 0 6px;}
+    input, select{width:100%; padding:10px; border-radius:12px; border:1px solid #2b3c54; background:var(--field); color:var(--txt);}
+    button{padding:10px 12px; border-radius:12px; border:1px solid #2b3c54; background:#1a2636; color:var(--txt); cursor:pointer;}
+    button:hover{background:#223247;}
+    .result{margin-top:10px; padding:10px; border-radius:12px; background:var(--field); border:1px dashed #2b3c54; white-space:pre-line;}
+    .pill{display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #2b3c54; background:#0e1520; font-size:12px; color:var(--mut); margin-left:6px;}
+    .warn{color:#ffd37a;}
+    .bad{color:#ff9aa2;}
+    .ok{color:#9cffb5;}
+    hr{border:none;border-top:1px solid #23344a;margin:12px 0;}
+    @media(max-width:900px){.col6,.col4,.col3{grid-column:span 12;}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mega Calculadora Médica (offline)</h1>
+  <div class="muted">
+    Hecha para guardia/hospitalización. No guarda datos. Úsala como apoyo y valida con guías y contexto clínico.
+  </div>
+
+  <div class="card">
+    <div class="tabs" id="tabs"></div>
+    <div class="muted" style="margin-top:10px;">
+      Tip: si algo te queda muy “MINSA-dependiente”, lo dejamos como plantilla editable y lo ajustas a tu protocolo del hospital.
+    </div>
+  </div>
+
+  <!-- Panels -->
+  <div class="card panel" id="p_imc">
+    <h2 style="font-size:16px;margin:0 0 10px;">IMC (BMI) + BSA (Mosteller)</h2>
+    <div class="row">
+      <div class="col6">
+        <label>Peso (kg)</label><input id="imc_peso" type="number" inputmode="decimal" placeholder="Ej: 52">
+      </div>
+      <div class="col6">
+        <label>Talla (cm)</label><input id="imc_talla" type="number" inputmode="decimal" placeholder="Ej: 160">
+      </div>
+      <div class="col12">
+        <button onclick="calcIMC()">Calcular</button>
+      </div>
+      <div class="col12"><div class="result" id="imc_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">IMC = kg / m². BSA = √((cm×kg)/3600).</div>
+  </div>
+
+  <div class="card panel" id="p_crcl" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Clearance de creatinina (Cockcroft–Gault)</h2>
+    <div class="row">
+      <div class="col4">
+        <label>Sexo</label>
+        <select id="crcl_sexo"><option value="M">Masculino</option><option value="F">Femenino</option></select>
+      </div>
+      <div class="col4"><label>Edad (años)</label><input id="crcl_edad" type="number" inputmode="numeric" placeholder="Ej: 65"></div>
+      <div class="col4"><label>Peso usado (kg)</label><input id="crcl_peso" type="number" inputmode="decimal" placeholder="Ej: 70"></div>
+      <div class="col6"><label>Creatinina sérica (mg/dL)</label><input id="crcl_cr" type="number" inputmode="decimal" placeholder="Ej: 1.2"></div>
+      <div class="col6">
+        <label>Nota</label>
+        <div class="muted">El tipo de peso (real/ideal/ajustado) depende del caso. Aquí ingresas el que decidas usar.</div>
+      </div>
+      <div class="col12"><button onclick="calcCrCl()">Calcular</button></div>
+      <div class="col12"><div class="result" id="crcl_out">Resultado: —</div></div>
+    </div>
+  </div>
+
+  <div class="card panel" id="p_parac" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Paracetamol pediátrico (orientativo)</h2>
+    <div class="row">
+      <div class="col6"><label>Peso (kg)</label><input id="par_peso" type="number" inputmode="decimal" placeholder="Ej: 12"></div>
+      <div class="col6">
+        <label>Dosis (mg/kg/dosis)</label>
+        <select id="par_mgkg"><option value="10">10</option><option value="15" selected>15</option></select>
+      </div>
+      <div class="col6">
+        <label>Intervalo</label>
+        <select id="par_int"><option value="6" selected>Cada 6 h</option><option value="8">Cada 8 h</option></select>
+      </div>
+      <div class="col6">
+        <label>Límite diario (mg/kg/día)</label>
+        <select id="par_max"><option value="60" selected>60</option><option value="75">75</option></select>
+      </div>
+      <div class="col12"><button onclick="calcParacetamol()">Calcular</button></div>
+      <div class="col12"><div class="result" id="par_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">Ajusta si hay hepatopatía, desnutrición severa, deshidratación o riesgo de sobredosis.</div>
+  </div>
+
+  <div class="card panel" id="p_atbped" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Antibióticos pediátricos (mg/kg)</h2>
+    <div class="muted">Plantilla práctica para calcular dosis por peso. Ajusta a indicación clínica, foco, gravedad y protocolo local.</div>
+    <hr/>
+    <div class="row">
+      <div class="col6"><label>Peso (kg)</label><input id="ab_peso" type="number" inputmode="decimal" placeholder="Ej: 18"></div>
+      <div class="col6">
+        <label>Fármaco</label>
+        <select id="ab_farm">
+          <option value="amoxi">Amoxicilina VO</option>
+          <option value="azitro">Azitromicina VO</option>
+          <option value="ceftria">Ceftriaxona IM/EV</option>
+        </select>
+      </div>
+      <div class="col6">
+        <label>Esquema</label>
+        <select id="ab_esq"></select>
+      </div>
+      <div class="col6">
+        <label>Máximo por día (mg/día) (editable)</label>
+        <input id="ab_maxdia" type="number" inputmode="numeric" placeholder="Ej: 3000">
+      </div>
+      <div class="col12"><button onclick="calcATB()">Calcular dosis</button></div>
+      <div class="col12"><div class="result" id="ab_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">
+      Nota: máximos varían por guía/edad/indicación. Usa tus topes de servicio. Si no pones máximo, solo calcula por mg/kg.
+    </div>
+  </div>
+
+  <div class="card panel" id="p_goteo" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Goteo IV (macro/micro): mL/h ↔ gotas/min</h2>
+    <div class="row">
+      <div class="col6">
+        <label>Factor de goteo</label>
+        <select id="got_factor">
+          <option value="20">Macrogotero 20 gtt/mL</option>
+          <option value="15">Macrogotero 15 gtt/mL</option>
+          <option value="10">Macrogotero 10 gtt/mL</option>
+          <option value="60" selected>Microgotero 60 gtt/mL</option>
+        </select>
+      </div>
+      <div class="col6">
+        <label>Modo</label>
+        <select id="got_modo">
+          <option value="mlh2gpm" selected>Convertir mL/h → gotas/min</option>
+          <option value="gpm2mlh">Convertir gotas/min → mL/h</option>
+        </select>
+      </div>
+      <div class="col6"><label>Valor</label><input id="got_val" type="number" inputmode="decimal" placeholder="Ej: 80"></div>
+      <div class="col6"><label>&nbsp;</label><button onclick="calcGoteo()">Calcular</button></div>
+      <div class="col12"><div class="result" id="got_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">Fórmulas: gtt/min = (mL/h × gtt/mL) / 60.  mL/h = (gtt/min × 60) / (gtt/mL).</div>
+  </div>
+
+  <div class="card panel" id="p_dil" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Diluciones / Concentraciones EV (mg ↔ mcg/mL) + dosis</h2>
+    <div class="row">
+      <div class="col4"><label>Fármaco en bolsa/jeringa (mg)</label><input id="dil_mg" type="number" inputmode="decimal" placeholder="Ej: 4"></div>
+      <div class="col4"><label>Volumen final (mL)</label><input id="dil_ml" type="number" inputmode="decimal" placeholder="Ej: 50"></div>
+      <div class="col4"><label>Dosis objetivo (mcg/min)</label><input id="dil_dosis" type="number" inputmode="decimal" placeholder="Ej: 10"></div>
+      <div class="col12"><button onclick="calcDil()">Calcular</button></div>
+      <div class="col12"><div class="result" id="dil_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">
+      Esto te da concentración (mcg/mL) y la velocidad (mL/h) para una dosis en mcg/min.
+      Verifica siempre compatibilidades y protocolos del hospital.
+    </div>
+  </div>
+
+  <div class="card panel" id="p_dengue" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Dengue: plantilla de hidratación (mL/kg)</h2>
+    <div class="muted">
+      Como las normas varían, esto es una plantilla para calcular volúmenes por peso y tiempo.
+      Tú ajustas el “mL/kg” según tu protocolo (signos de alarma, choque, etc.).
+    </div>
+    <hr/>
+    <div class="row">
+      <div class="col6"><label>Peso (kg)</label><input id="den_peso" type="number" inputmode="decimal" placeholder="Ej: 52"></div>
+      <div class="col3"><label>Indicación (mL/kg)</label><input id="den_mlkg" type="number" inputmode="decimal" placeholder="Ej: 10"></div>
+      <div class="col3"><label>Tiempo (horas)</label><input id="den_horas" type="number" inputmode="decimal" placeholder="Ej: 1"></div>
+      <div class="col12"><button onclick="calcDengue()">Calcular</button></div>
+      <div class="col12"><div class="result" id="den_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">Ejemplos: bolo 10–20 mL/kg en 1 h (según gravedad) o rehidrataciones escalonadas según norma.</div>
+  </div>
+
+  <div class="card panel" id="p_scores" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Scores clínicos útiles en guardia</h2>
+    <div class="muted">Calcula y muestra interpretación rápida (recordatorio; NO reemplaza evaluación clínica).</div>
+    <hr/>
+
+    <h3 style="margin:0 0 8px;font-size:14px;">CURB-65 (neumonía)</h3>
+    <div class="row">
+      <div class="col3"><label>Confusión</label><select id="c65_c"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>Urea elevada*</label><select id="c65_u"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>FR ≥ 30</label><select id="c65_r"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>PAS &lt; 90 o PAD ≤ 60</label><select id="c65_b"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>Edad ≥ 65</label><select id="c65_edad"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col12"><button onclick="calcCURB65()">Calcular CURB-65</button></div>
+      <div class="col12"><div class="result" id="c65_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">*“Urea elevada” depende del punto de corte de tu guía/lab. Aquí lo marcas Sí/No.</div>
+
+    <hr/>
+    <h3 style="margin:0 0 8px;font-size:14px;">CHA2DS2-VASc (FA)</h3>
+    <div class="row">
+      <div class="col3"><label>IC/Disfunción VI</label><select id="cha_ic"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>HTA</label><select id="cha_hta"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>Edad ≥75</label><select id="cha_75"><option value="0">No</option><option value="2">Sí</option></select></div>
+      <div class="col3"><label>DM</label><select id="cha_dm"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>ACV/AIT/TE previo</label><select id="cha_acv"><option value="0">No</option><option value="2">Sí</option></select></div>
+      <div class="col3"><label>Vascular (IAM/EAP/aorta)</label><select id="cha_vasc"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>Edad 65–74</label><select id="cha_6574"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col3"><label>Sexo femenino</label><select id="cha_f"><option value="0">No</option><option value="1">Sí</option></select></div>
+      <div class="col12"><button onclick="calcCHA()">Calcular CHA2DS2-VASc</button></div>
+      <div class="col12"><div class="result" id="cha_out">Resultado: —</div></div>
+    </div>
+
+    <hr/>
+    <h3 style="margin:0 0 8px;font-size:14px;">Wells para TEP (simplificado)</h3>
+    <div class="row">
+      <div class="col6"><label>Signos de TVP</label><select id="w_tvp"><option value="0">No</option><option value="3">Sí (3)</option></select></div>
+      <div class="col6"><label>TEP más probable que dx alternativo</label><select id="w_prob"><option value="0">No</option><option value="3">Sí (3)</option></select></div>
+      <div class="col6"><label>FC &gt; 100</label><select id="w_fc"><option value="0">No</option><option value="1.5">Sí (1.5)</option></select></div>
+      <div class="col6"><label>Cirugía/inmovilización reciente</label><select id="w_inm"><option value="0">No</option><option value="1.5">Sí (1.5)</option></select></div>
+      <div class="col6"><label>TEP/TVP previo</label><select id="w_prev"><option value="0">No</option><option value="1.5">Sí (1.5)</option></select></div>
+      <div class="col6"><label>Hemoptisis</label><select id="w_hemo"><option value="0">No</option><option value="1">Sí (1)</option></select></div>
+      <div class="col6"><label>Cáncer activo</label><select id="w_ca"><option value="0">No</option><option value="1">Sí (1)</option></select></div>
+      <div class="col12"><button onclick="calcWells()">Calcular Wells (TEP)</button></div>
+      <div class="col12"><div class="result" id="w_out">Resultado: —</div></div>
+    </div>
+  </div>
+
+  <div class="card panel" id="p_obs" style="display:none;">
+    <h2 style="font-size:16px;margin:0 0 10px;">Obstetricia básica: EG y FPP por FUM (Naegele)</h2>
+    <div class="row">
+      <div class="col6">
+        <label>FUM (fecha de última menstruación)</label>
+        <input id="fum" type="date">
+      </div>
+      <div class="col6">
+        <label>Fecha de evaluación</label>
+        <input id="eval" type="date">
+      </div>
+      <div class="col12"><button onclick="calcObs()">Calcular</button></div>
+      <div class="col12"><div class="result" id="obs_out">Resultado: —</div></div>
+    </div>
+    <div class="muted">FPP aproximada: FUM + 7 días − 3 meses + 1 año (equivalente a +280 días).</div>
+  </div>
+
+</div>
+
+<script>
+  // Helpers
+  const n = v => Number(v);
+  const isPos = v => isFinite(v) && v > 0;
+  const fmt = (x, d=2) => (isFinite(x) ? x.toFixed(d) : "—");
+
+  // Tabs init
+  const TABS = [
+    {id:"p_imc", label:"IMC/BSA"},
+    {id:"p_crcl", label:"CrCl"},
+    {id:"p_parac", label:"Paracetamol ped"},
+    {id:"p_atbped", label:"ATB ped"},
+    {id:"p_goteo", label:"Goteo"},
+    {id:"p_dil", label:"Diluciones EV"},
+    {id:"p_dengue", label:"Dengue (plantilla)"},
+    {id:"p_scores", label:"Scores"},
+    {id:"p_obs", label:"Obst (FUM)"},
+  ];
+
+  const tabsEl = document.getElementById("tabs");
+  TABS.forEach((t, i)=>{
+    const b = document.createElement("button");
+    b.className = "tab" + (i===0 ? " active" : "");
+    b.textContent = t.label;
+    b.onclick = ()=>showPanel(t.id, b);
+    tabsEl.appendChild(b);
+  });
+
+  function showPanel(id, btn){
+    document.querySelectorAll(".panel").forEach(p=>p.style.display="none");
+    document.getElementById(id).style.display="block";
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    btn.classList.add("active");
+  }
+
+  // IMC/BSA
+  function calcIMC(){
+    const peso = n(document.getElementById("imc_peso").value);
+    const tallaCm = n(document.getElementById("imc_talla").value);
+    const out = document.getElementById("imc_out");
+    if (!isPos(peso) || !isPos(tallaCm)) { out.textContent="Resultado: ingresa peso y talla válidos."; return; }
+    const m = tallaCm/100;
+    const imc = peso/(m*m);
+    const bsa = Math.sqrt((tallaCm*peso)/3600);
+    let cat = imc<18.5?"Bajo peso":imc<25?"Normal":imc<30?"Sobrepeso":"Obesidad";
+    out.textContent = `IMC = ${fmt(imc,1)} (${cat})\nBSA = ${fmt(bsa,2)} m²`;
+  }
+
+  // CrCl
+  function calcCrCl(){
+    const sexo = document.getElementById("crcl_sexo").value;
+    const edad = n(document.getElementById("crcl_edad").value);
+    const peso = n(document.getElementById("crcl_peso").value);
+    const cr = n(document.getElementById("crcl_cr").value);
+    const out = document.getElementById("crcl_out");
+    if (!isPos(edad) || !isPos(peso) || !isPos(cr)) { out.textContent="Resultado: completa edad, peso y creatinina válidos."; return; }
+    let crcl = ((140-edad)*peso)/(72*cr);
+    if (sexo==="F") crcl *= 0.85;
+    out.textContent = `CrCl ≈ ${fmt(crcl,1)} mL/min (Cockcroft–Gault)`;
+  }
+
+  // Paracetamol
+  function calcParacetamol(){
+    const peso = n(document.getElementById("par_peso").value);
+    const mgkg = n(document.getElementById("par_mgkg").value);
+    const intH = n(document.getElementById("par_int").value);
+    const maxDia = n(document.getElementById("par_max").value);
+    const out = document.getElementById("par_out");
+    if (!isPos(peso)) { out.textContent="Resultado: ingresa un peso válido."; return; }
+    const dosis = peso*mgkg;
+    const tomas = 24/intH;
+    const total = dosis*tomas;
+    const max = peso*maxDia;
+    const ok = total<=max;
+    out.textContent =
+      `${fmt(dosis,0)} mg por dosis cada ${intH} h\n`+
+      `Total ≈ ${fmt(total,0)} mg/día | Límite: ${fmt(max,0)} mg/día\n`+
+      (ok ? "OK" : "EXCEDE (ajusta dosis o intervalo)");
+  }
+
+  // ATB Peds datasets
+  const ABX = {
+    amoxi: {
+      name: "Amoxicilina VO",
+      esquemas: [
+        {key:"40-50", label:"40–50 mg/kg/día dividido c/8h", mgkgDiaMin:40, mgkgDiaMax:50, dosisPorDia:3},
+        {key:"80-90", label:"80–90 mg/kg/día dividido c/12h", mgkgDiaMin:80, mgkgDiaMax:90, dosisPorDia:2},
+      ],
+      maxDiaSugerido: 3000
+    },
+    azitro: {
+      name: "Azitromicina VO",
+      esquemas: [
+        {key:"10x3", label:"10 mg/kg/día por 3 días (1 vez al día)", mgkgDiaMin:10, mgkgDiaMax:10, dosisPorDia:1},
+        {key:"10-5x5", label:"D1: 10 mg/kg; D2–D5: 5 mg/kg (1 vez/día)", mgkgDiaMin:10, mgkgDiaMax:10, dosisPorDia:1, esEspecial:true},
+      ],
+      maxDiaSugerido: 500
+    },
+    ceftria: {
+      name: "Ceftriaxona IM/EV",
+      esquemas: [
+        {key:"50-75", label:"50–75 mg/kg/día (1 vez al día)", mgkgDiaMin:50, mgkgDiaMax:75, dosisPorDia:1},
+        {key:"100", label:"100 mg/kg/día (casos seleccionados) dividido c/12–24h", mgkgDiaMin:100, mgkgDiaMax:100, dosisPorDia:1},
+      ],
+      maxDiaSugerido: 2000
+    }
+  };
+
+  const esqSel = document.getElementById("ab_esq");
+  const farmSel = document.getElementById("ab_farm");
+  const maxDiaInp = document.getElementById("ab_maxdia");
+
+  function loadEsquemas(){
+    const f = ABX[farmSel.value];
+    esqSel.innerHTML = "";
+    f.esquemas.forEach(e=>{
+      const opt = document.createElement("option");
+      opt.value = e.key;
+      opt.textContent = e.label;
+      esqSel.appendChild(opt);
+    });
+    maxDiaInp.value = f.maxDiaSugerido;
+  }
+  farmSel.addEventListener("change", loadEsquemas);
+  loadEsquemas();
+
+  function calcATB(){
+    const peso = n(document.getElementById("ab_peso").value);
+    const farm = ABX[farmSel.value];
+    const key = esqSel.value;
+    const esq = farm.esquemas.find(e=>e.key===key);
+    const maxDia = n(maxDiaInp.value);
+    const out = document.getElementById("ab_out");
+
+    if (!isPos(peso)) { out.textContent="Resultado: ingresa un peso válido."; return; }
+
+    if (farmSel.value==="azitro" && esq.esEspecial){
+      const d1 = peso*10;
+      const d2 = peso*5;
+      out.textContent =
+        `${farm.name}\nDía 1: ${fmt(d1,0)} mg (1 vez/día)\nDías 2–5: ${fmt(d2,0)} mg (1 vez/día)\n` +
+        (isPos(maxDia) ? `Máx diario configurado: ${fmt(maxDia,0)} mg/día` : "");
+      return;
+    }
+
+    const diaMin = peso*esq.mgkgDiaMin;
+    const diaMax = peso*esq.mgkgDiaMax;
+    const porDosisMin = diaMin/esq.dosisPorDia;
+    const porDosisMax = diaMax/esq.dosisPorDia;
+
+    let alert = "";
+    if (isPos(maxDia)){
+      if (diaMax > maxDia) alert = `\n⚠️ Ojo: supera el máximo configurado (${fmt(maxDia,0)} mg/día). Ajusta según guía/edad.`;
+      else alert = `\n✅ Dentro del máximo configurado (${fmt(maxDia,0)} mg/día).`;
+    }
+
+    out.textContent =
+      `${farm.name}\n`+
+      `Dosis diaria: ${fmt(diaMin,0)}–${fmt(diaMax,0)} mg/día\n`+
+      `Si divides en ${esq.dosisPorDia} dosis/día: ${fmt(porDosisMin,0)}–${fmt(porDosisMax,0)} mg por dosis\n`+
+      alert;
+  }
+
+  // Goteo
+  function calcGoteo(){
+    const factor = n(document.getElementById("got_factor").value);
+    const modo = document.getElementById("got_modo").value;
+    const val = n(document.getElementById("got_val").value);
+    const out = document.getElementById("got_out");
+    if (!isPos(val)) { out.textContent="Resultado: ingresa un valor válido."; return; }
+
+    if (modo==="mlh2gpm"){
+      const gpm = (val*factor)/60;
+      out.textContent = `${fmt(val,1)} mL/h → ${fmt(gpm,1)} gotas/min (factor ${factor} gtt/mL)`;
+    } else {
+      const mlh = (val*60)/factor;
+      out.textContent = `${fmt(val,1)} gotas/min → ${fmt(mlh,1)} mL/h (factor ${factor} gtt/mL)`;
+    }
+  }
+
+  // Diluciones EV
+  function calcDil(){
+    const mg = n(document.getElementById("dil_mg").value);
+    const ml = n(document.getElementById("dil_ml").value);
+    const dosis = n(document.getElementById("dil_dosis").value); // mcg/min
+    const out = document.getElementById("dil_out");
+
+    if (!isPos(mg) || !isPos(ml)) { out.textContent="Resultado: ingresa mg y mL válidos."; return; }
+
+    const mcgTotal = mg*1000;
+    const conc = mcgTotal/ml; // mcg/mL
+
+    let txt = `Concentración: ${fmt(conc,2)} mcg/mL (${fmt(mg/ml,4)} mg/mL)\n`;
+
+    if (isPos(dosis)){
+      const mlMin = dosis/conc;
+      const mlH = mlMin*60;
+      txt += `Para ${fmt(dosis,1)} mcg/min → ${fmt(mlH,2)} mL/h`;
+    } else {
+      txt += `Ingresa dosis (mcg/min) si quieres calcular velocidad (mL/h).`;
+    }
+    out.textContent = txt;
+  }
+
+  // Dengue plantilla
+  function calcDengue(){
+    const peso = n(document.getElementById("den_peso").value);
+    const mlkg = n(document.getElementById("den_mlkg").value);
+    const horas = n(document.getElementById("den_horas").value);
+    const out = document.getElementById("den_out");
+    if (!isPos(peso) || !isPos(mlkg) || !isPos(horas)) { out.textContent="Resultado: completa peso, mL/kg y horas válidos."; return; }
+    const total = peso*mlkg;
+    const mlh = total/horas;
+    out.textContent =
+      `Volumen total: ${fmt(total,0)} mL (=${mlkg} mL/kg × ${peso} kg)\n`+
+      `En ${horas} h → velocidad ≈ ${fmt(mlh,1)} mL/h`;
+  }
+
+  // Scores
+  function calcCURB65(){
+    const s = n(document.getElementById("c65_c").value) + n(document.getElementById("c65_u").value) +
+              n(document.getElementById("c65_r").value) + n(document.getElementById("c65_b").value) +
+              n(document.getElementById("c65_edad").value);
+    let interp = s<=1 ? "Bajo riesgo (manejo ambulatorio si clínicamente estable)" :
+                 s===2 ? "Riesgo intermedio (considera hospitalización/observación)" :
+                 "Alto riesgo (hospitalización; evalúa UCI según clínica)";
+    document.getElementById("c65_out").textContent = `Puntaje: ${s}\n${interp}`;
+  }
+
+  function calcCHA(){
+    const s =
+      n(document.getElementById("cha_ic").value) +
+      n(document.getElementById("cha_hta").value) +
+      n(document.getElementById("cha_75").value) +
+      n(document.getElementById("cha_dm").value) +
+      n(document.getElementById("cha_acv").value) +
+      n(document.getElementById("cha_vasc").value) +
+      n(document.getElementById("cha_6574").value) +
+      n(document.getElementById("cha_f").value);
+
+    // Interpretación general (sin meternos en guideline específica)
+    let interp = (s===0) ? "Muy bajo riesgo." :
+                 (s===1) ? "Riesgo bajo-intermedio (individualiza)." :
+                 "Riesgo mayor (considera anticoagulación según guía y sangrado).";
+
+    document.getElementById("cha_out").textContent = `Puntaje: ${s}\n${interp}`;
+  }
+
+  function calcWells(){
+    const s =
+      n(document.getElementById("w_tvp").value) +
+      n(document.getElementById("w_prob").value) +
+      n(document.getElementById("w_fc").value) +
+      n(document.getElementById("w_inm").value) +
+      n(document.getElementById("w_prev").value) +
+      n(document.getElementById("w_hemo").value) +
+      n(document.getElementById("w_ca").value);
+
+    // Dos niveles comunes (simplificación):
+    let interp = (s<=4) ? "TEP poco probable (considera dímero D si aplica y clínica)." :
+                         "TEP probable (evalúa imagen/anticoagulación según contexto).";
+
+    document.getElementById("w_out").textContent = `Puntaje: ${fmt(s,1)}\n${interp}`;
+  }
+
+  // Obstetricia (FUM)
+  function daysBetween(a,b){
+    const ms = b.getTime() - a.getTime();
+    return Math.floor(ms/(1000*60*60*24));
+  }
+  function addDays(d, days){
+    const x = new Date(d.getTime());
+    x.setDate(x.getDate()+days);
+    return x;
+  }
+  function fmtDate(d){
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,"0");
+    const da=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${da}`;
+  }
+  function calcObs(){
+    const fumStr = document.getElementById("fum").value;
+    const evalStr = document.getElementById("eval").value;
+    const out = document.getElementById("obs_out");
+    if (!fumStr || !evalStr) { out.textContent="Resultado: elige FUM y fecha de evaluación."; return; }
+
+    const fum = new Date(fumStr+"T00:00:00");
+    const ev = new Date(evalStr+"T00:00:00");
+
+    const dias = daysBetween(fum, ev);
+    if (dias < 0){ out.textContent="Resultado: la fecha de evaluación no puede ser antes de la FUM."; return; }
+
+    const semanas = Math.floor(dias/7);
+    const rem = dias%7;
+
+    const fpp = addDays(fum, 280);
+
+    out.textContent =
+      `EG aproximada: ${semanas} semanas + ${rem} días\n`+
+      `FPP (≈280 días): ${fmtDate(fpp)}`;
+  }
+</script>
+</body>
+</html>
